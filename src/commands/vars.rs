@@ -205,7 +205,7 @@ pub fn import_keys(ctx: &Ctx, args: &[String]) -> Res<i32> {
     })?;
 
     // The pasted lines now live in the vault; the block carries them from here on.
-    write_file_atomic(&path, absorb_outside(&text, &keys)?.as_bytes(), file_mode(&path))?;
+    write_file_atomic(&path, absorb_outside(&text, &keys, project.format)?.as_bytes(), file_mode(&path))?;
     if !has_block(&project)? {
         let cur = current_env(&project)?;
         write_env_file(&project, &cur, &resolve_env(&store.data, &project.app, &cur)?)?;

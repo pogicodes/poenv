@@ -297,7 +297,7 @@ poenv run staging -- npm run migrate  <span class="c"># another env</span></pre>
         <tr><td>Anything else: Vite, Remix, Express, Bun, Docker Compose…</td><td><code>.env</code></td><td><code>dotenv</code></td></tr>
       </table></div>
       <p>If the repo's env files already hold keys, <code>init</code> uses the file that has them (and asks when several do). Override with <code>--file</code> and <code>--format</code>, or edit <a href="#poenv-file"><code>.poenv</code></a>.</p>
-      <p>The format only matters for values containing <code>$</code> or escapes, which loaders read differently. Each format is checked in CI against the real Node dotenv, Next.js and python-dotenv loaders.</p>
+      <p>The format only matters for values containing <code>$</code> or escapes, which loaders read differently. Each format is checked in CI against the real Node dotenv, Next.js, Expo, python-dotenv, java.util.Properties and Spring Boot loaders.</p>
       <div class="note"><p><strong>Vite and Bun</strong> expand <code>$VAR</code> in env files, so they'd read the <code>dotenv</code> format's unescaped <code>$</code> as a variable. Use <code>--format next</code> there, which escapes it as <code>\$</code>.</p></div>
       <p>A few values can't be written exactly in some formats (for example <code>${…}</code> for python). poenv writes them as best it can, lists the keys, and suggests <a href="#run"><code>poenv run</code></a>.</p>
     </section>
@@ -434,7 +434,7 @@ DEBUG=true   <span class="c"># yours: kept as-is, and it wins over the block</sp
       <div class="codewrap"><pre>app    = "my-app"
 env    = "local"        <span class="c"># the env the file is on</span>
 file   = ".env.local"   <span class="c"># the env file poenv writes</span>
-format = "next"         <span class="c"># dotenv | next | python</span></pre></div>
+format = "next"         <span class="c"># dotenv | next | python | properties</span></pre></div>
       <p>It's gitignored by default. You can commit it instead: a teammate's <code>poenv init</code> in a fresh clone then adopts its settings, and poenv leaves a tracked <code>.poenv</code> alone.</p>
     </section>
 

@@ -16,7 +16,7 @@ A change made anywhere (`set`, `add`, `rm`, `rollback`, or an edit in the TUI) a
 
 Key names in the vault use letters, digits and `_` (not starting with a digit). Env files also allow `.` and `-` in names; `poenv init` and `poenv import` leave such keys where they are, outside the block, and say which ones.
 
-Values are quoted for the loader the repo uses (`format` in `.poenv`: `dotenv`, `next` or `python`), because they disagree about `$` and escapes. This is checked against the real Node dotenv, Next.js and python-dotenv loaders in CI.
+Values are quoted for the loader the repo uses (`format` in `.poenv`: `dotenv`, `next`, `python` or `properties`), because they disagree about `$` and escapes. This is checked against the real Node dotenv, Next.js, Expo, python-dotenv, java.util.Properties and Spring Boot loaders in CI.
 
 poenv isn't tied to a framework: anything that reads a `.env`-style file works. `poenv init` picks the file and format from the repo, and `--file` / `--format` (or editing `.poenv`) override them:
 
@@ -24,9 +24,11 @@ poenv isn't tied to a framework: anything that reads a `.env`-style file works. 
 |---|---|---|
 | Next.js (`next` in `package.json`) | `.env.local` | `next` |
 | Python (`pyproject.toml`, `requirements.txt` or `Pipfile`) | `.env` | `python` |
+| Expo (`expo` in `package.json`) | `.env` | `next` |
+| Spring Boot (in `pom.xml`, `build.gradle(.kts)` or `gradle/libs.versions.toml`) | `application.properties` | `properties` |
 | Anything else: Vite, Remix, Express, Bun, Docker Compose… | `.env` | `dotenv` |
 
-If the repo's env files already hold keys, `init` uses the file that has them (and asks when several do). The format only matters for values containing `$`. Tools that expand `$VAR` in env files, like Vite and Bun, read the `dotenv` format's unescaped `$` as a variable, so use `--format next` there, which escapes it as `\$`. Only the three loaders above are tested in CI. `poenv run` sidesteps quoting entirely.
+Detection checks Next.js, then Python, then Expo, then Spring Boot, and the first match wins. If the repo's env files already hold keys, `init` uses the file that has them (and asks when several do). A `.env` file always gets a dotenv format, even in a Spring Boot repo. The format only matters for values containing `$`. Tools that expand `$VAR` in env files, like Vite and Bun, read the `dotenv` format's unescaped `$` as a variable, so use `--format next` there, which escapes it as `\$`. Only the loaders above are tested in CI. `poenv run` sidesteps quoting entirely.
 
 ## Keeping values out of the file
 
@@ -50,13 +52,19 @@ Start anything that reads the env file through `poenv run`, for example `poenv r
 
 ## Java and Spring Boot
 
-Spring Boot doesn't read `.env` files, so `poenv use` alone changes nothing for it. Inject the env with `poenv run` instead:
+Spring Boot doesn't read `.env` files, so in a Spring Boot repo `poenv init` manages `application.properties` in the repo root instead, with the `properties` format. Spring loads that file from the folder the app starts in, on top of the `application.properties` bundled from `src/main/resources`, so `poenv use staging` switches the app's config the same way it switches a `.env`. Restart the app to pick it up.
+
+Reference the keys from your bundled config, for example `spring.datasource.password=${DB_PASSWORD}`. poenv key names use letters, digits and `_`, so dotted Spring names like `server.port` stay as your own lines outside the block. Values are written with `.properties` escapes (`\\`, `\n`, `\uXXXX` for anything outside ASCII), so the file reads back exactly whatever its encoding. The exception is `${…}`: Spring resolves it as a placeholder, so poenv lists those keys and suggests `poenv run`.
+
+In a multi-module build, the app starts in the module's folder, so point poenv there: `poenv file api/application.properties`.
+
+You can also inject the env with `poenv run` and write nothing to disk:
 
 ```bash
 poenv run -- ./mvnw spring-boot:run
 poenv run staging -- ./gradlew bootRun
 ```
 
-Spring reads environment variables natively: reference them in `application.properties` (`spring.datasource.password=${DB_PASSWORD}`), or name keys for relaxed binding (`SPRING_DATASOURCE_URL` sets `spring.datasource.url`). Nothing is written to disk, and no quoting applies.
+Spring reads environment variables natively, and they win over `application.properties`. Environment variables also allow relaxed binding (`SPRING_DATASOURCE_URL` sets `spring.datasource.url`), which keys in a properties file don't. With `poenv values run`, the file lists key names with empty values and `poenv run` supplies the real ones.
 
-If you run the app with Docker Compose, `env_file: .env` reads the file poenv writes. Avoid loading it with `spring.config.import=optional:file:.env[.properties]`: properties files don't strip quotes, so any value poenv quotes keeps its quotes.
+If you run the app with Docker Compose, `env_file: .env` reads a `.env` file poenv writes (`poenv init --file .env`). Avoid loading a `.env` with `spring.config.import=optional:file:.env[.properties]`: the dotenv format's quotes aren't stripped by the properties loader, so use the `properties` format for any file Spring reads.

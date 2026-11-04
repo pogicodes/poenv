@@ -16,11 +16,14 @@ const END: &str = "# <<< poenv <<<";
 /// - next: Next.js (dotenv + dotenv-expand). Expands `$VAR` even in single quotes; `\$` escapes it.
 /// - python: python-dotenv. Expands `${VAR}` even in single quotes, with no escape; double quotes
 ///   honour `\\` and `\"`.
+/// - properties: Java `.properties` (java.util.Properties, Spring Boot). No quotes: backslash
+///   escapes, `\uXXXX` for anything outside ASCII, and `#`/`!` comment lines.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Dialect {
     Dotenv,
     Next,
     Python,
+    Properties,
 }
 
 impl Dialect {
@@ -29,6 +32,7 @@ impl Dialect {
             "dotenv" => Some(Dialect::Dotenv),
             "next" => Some(Dialect::Next),
             "python" => Some(Dialect::Python),
+            "properties" => Some(Dialect::Properties),
             _ => None,
         }
     }
@@ -37,6 +41,7 @@ impl Dialect {
             Dialect::Dotenv => "dotenv",
             Dialect::Next => "next",
             Dialect::Python => "python",
+            Dialect::Properties => "properties",
         }
     }
 }
@@ -114,6 +119,9 @@ fn bare_safe(v: &str) -> bool {
 
 /// Quote a value so `dialect`'s loader reads it back unchanged (see `is_lossy` for the exceptions).
 pub fn format_value(value: &str, dialect: Dialect) -> String {
+    if dialect == Dialect::Properties {
+        return properties_escape(value);
+    }
     if bare_safe(value) {
         return value.to_string();
     }
@@ -137,13 +145,132 @@ pub fn format_value(value: &str, dialect: Dialect) -> String {
 
 /// True when `dialect`'s loader can't read `value` back exactly, whatever the quoting.
 pub fn is_lossy(value: &str, dialect: Dialect) -> bool {
-    if dialect == Dialect::Python {
+    // Spring resolves `${…}` placeholders in property values, with no escape before Spring 6.2.
+    if dialect == Dialect::Python || dialect == Dialect::Properties {
         return value.contains("${");
     }
     if bare_safe(value) || !value.contains('\'') || !value.contains('`') {
         return false;
     }
     value.contains('"') || value.contains("\\n") || value.contains("\\r")
+}
+
+/// A `.properties` value that java.util.Properties and Spring Boot read back exactly, whatever the
+/// file's encoding: backslash escapes, `\uXXXX` outside printable ASCII, and an escaped leading space
+/// (loaders drop leading whitespace).
+fn properties_escape(value: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in value.chars().enumerate() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{c}' => out.push_str("\\f"),
+            ' ' if i == 0 => out.push_str("\\ "),
+            ' '..='~' => out.push(c),
+            _ => {
+                let mut units = [0u16; 2];
+                for u in c.encode_utf16(&mut units) {
+                    out.push_str(&format!("\\u{u:04X}"));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Undo `.properties` escapes the way java.util.Properties does (`\x` is `x`; a bad `\u` stays as-is).
+fn properties_unescape(raw: &str) -> String {
+    let chars: Vec<char> = raw.chars().collect();
+    let mut units: Vec<u16> = vec![];
+    let mut i = 0;
+    fn push(c: char, units: &mut Vec<u16>) {
+        let mut buf = [0u16; 2];
+        units.extend_from_slice(c.encode_utf16(&mut buf));
+    }
+    while i < chars.len() {
+        let c = chars[i];
+        if c != '\\' || i + 1 == chars.len() {
+            push(c, &mut units);
+            i += 1;
+            continue;
+        }
+        let n = chars[i + 1];
+        i += 2;
+        match n {
+            'n' => push('\n', &mut units),
+            'r' => push('\r', &mut units),
+            't' => push('\t', &mut units),
+            'f' => push('\u{c}', &mut units),
+            'u' => {
+                let hex: String = chars.iter().skip(i).take(4).collect();
+                match u16::from_str_radix(&hex, 16) {
+                    Ok(u) if hex.len() == 4 && hex.chars().all(|h| h.is_ascii_hexdigit()) => {
+                        units.push(u);
+                        i += 4;
+                    }
+                    _ => push('u', &mut units),
+                }
+            }
+            other => push(other, &mut units),
+        }
+    }
+    String::from_utf16_lossy(&units)
+}
+
+/// True when a `.properties` line ends in an odd number of backslashes (it continues on the next line).
+fn continues(line: &str) -> bool {
+    line.chars().rev().take_while(|c| *c == '\\').count() % 2 == 1
+}
+
+fn prop_ws(c: char) -> bool {
+    c == ' ' || c == '\t' || c == '\u{c}'
+}
+
+/// `.properties` entries in lines[from, to): `key=value`, `key: value` or `key value`, with
+/// backslash line continuations. Comment lines start with `#` or `!`.
+fn scan_properties(lines: &[String], from: usize, to: usize) -> Vec<Entry> {
+    let mut entries = vec![];
+    let mut i = from;
+    while i < to {
+        let start = i;
+        let first = lines[i].trim_start_matches(prop_ws);
+        if first.is_empty() || first.starts_with('#') || first.starts_with('!') {
+            i += 1;
+            continue;
+        }
+        let mut logical = first.to_string();
+        while continues(&logical) && i + 1 < to {
+            logical.pop();
+            i += 1;
+            logical.push_str(lines[i].trim_start_matches(prop_ws));
+        }
+        if continues(&logical) {
+            logical.pop();
+        }
+        i += 1;
+        let chars: Vec<char> = logical.chars().collect();
+        let mut k = 0;
+        while k < chars.len() && !matches!(chars[k], '=' | ':') && !prop_ws(chars[k]) {
+            k += if chars[k] == '\\' { 2 } else { 1 };
+        }
+        let k = k.min(chars.len());
+        let key: String = chars[..k].iter().collect();
+        let mut v = k;
+        while v < chars.len() && prop_ws(chars[v]) {
+            v += 1;
+        }
+        if v < chars.len() && matches!(chars[v], '=' | ':') {
+            v += 1;
+            while v < chars.len() && prop_ws(chars[v]) {
+                v += 1;
+            }
+        }
+        let value: String = chars[v..].iter().collect();
+        entries.push(Entry { key: properties_unescape(&key), value: properties_unescape(&value), start, end: i - 1 });
+    }
+    entries
 }
 
 fn split_lines(text: &str) -> Vec<String> {
@@ -232,7 +359,7 @@ pub fn remove_block(text: &str) -> Res<String> {
 }
 
 /// Removes the user's own definitions of `keys` (e.g. after absorbing them into poenv).
-pub fn absorb_outside(text: &str, keys: &[String]) -> Res<String> {
+pub fn absorb_outside(text: &str, keys: &[String], dialect: Dialect) -> Res<String> {
     let eol = eol(text);
     let lines = split_lines(text);
     let regions = match find_block(&lines)? {
@@ -241,7 +368,7 @@ pub fn absorb_outside(text: &str, keys: &[String]) -> Res<String> {
     };
     let mut drop = vec![false; lines.len()];
     for (from, to) in regions {
-        for e in scan_entries(&lines, from, to, Dialect::Dotenv) {
+        for e in scan_entries(&lines, from, to, dialect) {
             if keys.contains(&e.key) {
                 for d in drop.iter_mut().take(e.end + 1).skip(e.start) {
                     *d = true;
@@ -347,6 +474,9 @@ fn key_eq(s: &str) -> Option<(String, String)> {
 
 /// KEY=value entries in lines[from, to), with the line span each one covers.
 fn scan_entries(lines: &[String], from: usize, to: usize, dialect: Dialect) -> Vec<Entry> {
+    if dialect == Dialect::Properties {
+        return scan_properties(lines, from, to);
+    }
     let mut entries = vec![];
     let mut i = from;
     while i < to {
@@ -463,7 +593,7 @@ mod tests {
     #[test]
     fn round_trips_every_dialect() {
         let values = ["plain", "with space", "p$$w $HOME", "a'b", "a'b`c", "multi\nline", "#hash", "x=y", "q\"uote"];
-        for d in [Dialect::Dotenv, Dialect::Next, Dialect::Python] {
+        for d in [Dialect::Dotenv, Dialect::Next, Dialect::Python, Dialect::Properties] {
             for v in values {
                 if is_lossy(v, d) {
                     continue;
@@ -473,6 +603,61 @@ mod tests {
                 assert_eq!(parsed.block.unwrap().vars["K"], v, "{d:?} {v:?}");
             }
         }
+    }
+
+    #[test]
+    fn properties_values_are_escaped_not_quoted() {
+        let f = |v| format_value(v, Dialect::Properties);
+        assert_eq!(f("jdbc:postgresql://db:5432/app?ssl=true"), "jdbc:postgresql://db:5432/app?ssl=true");
+        assert_eq!(f("it's \"fine\" #1 !2 a=b"), "it's \"fine\" #1 !2 a=b");
+        assert_eq!(f("C:\\path"), "C:\\\\path");
+        assert_eq!(f("a\nb\tc"), "a\\nb\\tc");
+        assert_eq!(f("  padded  "), "\\  padded  ");
+        assert_eq!(f("héllo 🌏"), "h\\u00E9llo \\uD83C\\uDF0F");
+        assert_eq!(f(""), "");
+        assert!(is_lossy("pa${X}", Dialect::Properties));
+        assert!(!is_lossy("pa$$word $HOME", Dialect::Properties));
+    }
+
+    #[test]
+    fn round_trips_hard_values_as_properties() {
+        let cases = [
+            "", " ", "\\", "end\\", "  padded  ", "a\r\nb", "\u{c}form", "it's `all` \"three\" \\n", "\u{1}ctl",
+            "-----BEGIN KEY-----\nMIIB\n-----END KEY-----", "héllo 🌏", "=:#!", "\\u0041 not an escape",
+        ];
+        for v in cases {
+            let text = write_block("", "app", "local", &vars(&[("K", v)]), Dialect::Properties).unwrap();
+            assert_eq!(parse_env_file(&text, Dialect::Properties).unwrap().block.unwrap().vars["K"], v, "{v:?}");
+        }
+    }
+
+    #[test]
+    fn reads_the_common_properties_forms() {
+        let text = [
+            "# comment", "! also a comment", "", "A=1", "B: two", "C three", "  D  =  spaced  ", "E=multi \\",
+            "    line", "F=", "G", "H=\\u0048i # not a comment", "I\\=J=k", "spring.datasource.url=jdbc:x",
+        ]
+        .join("\n");
+        let got = parse_env_file(&text, Dialect::Properties).unwrap().outside;
+        let want = vars(&[
+            ("A", "1"), ("B", "two"), ("C", "three"), ("D", "spaced  "), ("E", "multi line"), ("F", ""), ("G", ""),
+            ("H", "Hi # not a comment"), ("I=J", "k"), ("spring.datasource.url", "jdbc:x"),
+        ]);
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn properties_block_keeps_the_users_lines() {
+        let user = "server.port=8080\nLONG=a \\\n  b\n";
+        let out = write_block(user, "my-app", "dev", &vars(&[("DB_PASSWORD", "p w")]), Dialect::Properties).unwrap();
+        assert!(out.starts_with(BEGIN_L) && out.ends_with(user));
+        assert!(out.contains("\nDB_PASSWORD=p w\n"));
+        let p = parse_env_file(&out, Dialect::Properties).unwrap();
+        assert_eq!(p.block.unwrap().vars, vars(&[("DB_PASSWORD", "p w")]));
+        assert_eq!(p.outside, vars(&[("server.port", "8080"), ("LONG", "a b")]));
+        assert_eq!(remove_block(&out).unwrap(), user);
+        // A continued value is absorbed whole, including its continuation line.
+        assert_eq!(absorb_outside(user, &["LONG".into()], Dialect::Properties).unwrap(), "server.port=8080\n");
     }
 
     #[test]
@@ -577,7 +762,7 @@ mod tests {
         let d = diff_keys(&vars(&[("A", "1"), ("B", "2"), ("C", "3")]), &vars(&[("B", "2"), ("C", "x"), ("D", "4"), ("A0", "0")]));
         assert_eq!(d, KeyDiff { added: vec!["A0".into(), "D".into()], changed: vec!["C".into()], removed: vec!["A".into()] });
         let text = "KEEP=1\nTAKE=\"multi\nline\"\n# note\nALSO=2\n";
-        assert_eq!(absorb_outside(text, &["TAKE".into(), "ALSO".into()]).unwrap(), "KEEP=1\n# note\n");
+        assert_eq!(absorb_outside(text, &["TAKE".into(), "ALSO".into()], Dialect::Dotenv).unwrap(), "KEEP=1\n# note\n");
     }
 
     fn temp() -> std::path::PathBuf {

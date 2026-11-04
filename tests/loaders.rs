@@ -1,6 +1,8 @@
-// Checks the written block against the real loaders (Node dotenv, Next.js, python-dotenv), not just
-// our own parser. They're JS and Python libraries, so this runs only where they're installed:
+// Checks the written block against the real loaders (Node dotenv, Next.js, Expo, python-dotenv,
+// java.util.Properties, Spring Boot), not just our own parser. They're JS, Python and Java libraries,
+// so this runs only where they're installed:
 //   cd tests/loaders && npm ci && pip install -r requirements.txt
+//   Spring Boot: put spring-boot, spring-core and spring-jcl jars in tests/loaders/jars (CI downloads them)
 //   POENV_TEST_LOADERS=1 cargo test --test loaders
 // CI sets POENV_TEST_LOADERS, which makes a missing loader a failure instead of a skip.
 use poenv::envfile::{Dialect, Vars, is_lossy, write_block};
@@ -37,11 +39,15 @@ fn fixture() -> PathBuf {
 }
 
 fn write_cases(dialect: Dialect) -> PathBuf {
+    write_cases_to(dialect, ".env")
+}
+
+fn write_cases_to(dialect: Dialect, file: &str) -> PathBuf {
     let bytes = poenv::util::random_bytes(6);
     let dir = std::env::temp_dir().join(format!("poenv-loaders-{}", poenv::util::hex(&bytes)));
     std::fs::create_dir_all(&dir).unwrap();
     let vars: Vars = CASES.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-    std::fs::write(dir.join(".env"), write_block("", "t", "local", &vars, dialect).unwrap()).unwrap();
+    std::fs::write(dir.join(file), write_block("", "t", "local", &vars, dialect).unwrap()).unwrap();
     dir
 }
 
@@ -92,6 +98,36 @@ fn nextjs_reads_the_next_dialect_back_exactly() {
 }
 
 #[test]
+fn expo_reads_the_next_dialect_back_exactly() {
+    if let Some(got) = node("expo", &write_cases(Dialect::Next)) {
+        expect_faithful(&got, Dialect::Next);
+    }
+}
+
+fn properties_file() -> String {
+    write_cases_to(Dialect::Properties, "application.properties").join("application.properties").to_string_lossy().into_owned()
+}
+
+#[test]
+fn java_properties_reads_the_properties_dialect_back_exactly() {
+    if let Some(got) = load("java", &["Read.java", "java", &properties_file()]) {
+        expect_faithful(&got, Dialect::Properties);
+    }
+}
+
+#[test]
+fn spring_boot_reads_the_properties_dialect_back_exactly() {
+    if !fixture().join("jars").exists() && !required() {
+        eprintln!("skipping: put the Spring Boot jars in tests/loaders/jars first");
+        return;
+    }
+    let cp = Path::new("jars").join("*").to_string_lossy().into_owned();
+    if let Some(got) = load("java", &["-cp", &cp, "Read.java", "spring", &properties_file()]) {
+        expect_faithful(&got, Dialect::Properties);
+    }
+}
+
+#[test]
 fn python_dotenv_reads_the_python_dialect_back_exactly() {
     let python = std::env::var("POENV_TEST_PYTHON").unwrap_or_else(|_| "python3".into());
     let dir = write_cases(Dialect::Python);
@@ -109,4 +145,6 @@ fn lossy_detection_matches_what_the_loaders_cant_do() {
     assert!(is_lossy(get("T_DOLLAR"), Dialect::Python));
     assert!(!is_lossy(get("T_DOLLAR"), Dialect::Next));
     assert!(!is_lossy(get("T_BOTH"), Dialect::Dotenv));
+    assert!(is_lossy(get("T_DOLLAR"), Dialect::Properties)); // Spring resolves ${X}
+    assert!(!is_lossy(get("T_ALL"), Dialect::Properties));
 }
