@@ -61,16 +61,26 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      # Before the first release there's nothing to install: skip, but still fail on any other gh error.
       - name: Latest release tag
         shell: bash
-        run: echo "LATEST=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName | sed 's/^v//')" >> "$GITHUB_ENV"
+        run: |
+          if ! tag=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2> gh-error.txt); then
+            if grep -q "release not found" gh-error.txt; then
+              echo "::notice::No release yet, so the installers have nothing to install. Skipped."
+              exit 0
+            fi
+            cat gh-error.txt
+            exit 1
+          fi
+          echo "LATEST=${tag#v}" >> "$GITHUB_ENV"
       - name: install.sh
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && env.LATEST != ''
         run: |
           sh site/install.sh --yes --dir "$RUNNER_TEMP/bin" --no-modify-path
           [ "$("$RUNNER_TEMP/bin/poenv" --version)" = "$LATEST" ]
       - name: install.ps1
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.LATEST != ''
         shell: pwsh
         run: |
           $env:POENV_INSTALL_DIR = "$env:RUNNER_TEMP\bin"
