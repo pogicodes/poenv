@@ -15,7 +15,7 @@ poenv add OPENAI_API_KEY   # pull in a key you share across apps
 - **Agent-safe**: agents can list key names, switch envs and run commands, but poenv never prints a value to them or lets them switch to a protected env like `prod`.
 - **Any language**: it writes a standard `.env` file, or injects variables with `poenv run -- <cmd>`.
 
-> **AI agents:** to install and set up poenv, follow [INSTALL.md](INSTALL.md). Every command, its `--json` output and exit codes: [docs/commands.md](docs/commands.md). To give every agent on your machine a `/poenv` command: `npx skills add pogicodes/poenv`.
+> **AI agents:** to install and set up poenv, follow [INSTALL.md](INSTALL.md). Every command, its `--json` output and exit codes: [docs/commands.md](docs/commands.md). To give every agent on your machine a `/poenv` command: `npx skills add pogicodes/poenv-skill`.
 
 ## Install
 
@@ -76,7 +76,7 @@ Run `poenv` on its own. Values stay masked until you press `v`, and `u` switches
 
 In an agent's shell, poenv lists key names and switches envs, but won't print values or switch to protected envs. Values in `poenv run` output are shown as `***`, and `poenv values run` keeps them out of the env file entirely ([details](docs/env-file.md#keeping-values-out-of-the-file)). `poenv init` adds a short section to `AGENTS.md` / `CLAUDE.md` so agents know how. Installing for an agent: [INSTALL.md](INSTALL.md).
 
-For a `/poenv` command in Claude Code, Codex, Cursor and other agents, install the skill: `npx skills add pogicodes/poenv` ([details](docs/setup.md#agent-skill-and-poenv)).
+For a `/poenv` command in Claude Code, Codex, Cursor and other agents, install the skill: `npx skills add pogicodes/poenv-skill` ([details](docs/setup.md#agent-skill-and-poenv)).
 
 ![poenv for agents: ls works, get and use prod are refused, use staging works](docs/demo/agents.gif)
 

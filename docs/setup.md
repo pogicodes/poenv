@@ -27,10 +27,10 @@ The first `poenv init` creates your vault and shows a **24-word recovery phrase,
 
 ## Agent skill and `/poenv`
 
-[`skills/poenv`](../skills/poenv/SKILL.md) is an [Agent Skill](https://agentskills.io): it teaches a coding agent to install poenv, set up a repo, switch envs and run commands without seeing values. Install it into every agent on your machine:
+[`pogicodes/poenv-skill`](https://github.com/pogicodes/poenv-skill/blob/main/skills/poenv/SKILL.md) is an [Agent Skill](https://agentskills.io): it teaches a coding agent to install poenv, set up a repo, switch envs and run commands without seeing values. Install it into every agent on your machine:
 
 ```bash
-npx skills add pogicodes/poenv
+npx skills add pogicodes/poenv-skill
 ```
 
 Then type `/poenv` (or `/poenv use staging`, `/poenv setup`) in Claude Code or Cursor, or `$poenv` in Codex. Agents also pick it up on their own when you ask about env vars.

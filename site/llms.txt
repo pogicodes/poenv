@@ -12,7 +12,7 @@ Values stay with the user, even if they ask (a test, a dummy key, "just to check
 
 ## Docs
 
-- [Agent skill](https://github.com/pogicodes/poenv/blob/main/skills/poenv/SKILL.md): install with `npx skills add pogicodes/poenv`
+- [Agent skill](https://github.com/pogicodes/poenv-skill/blob/main/skills/poenv/SKILL.md): install with `npx skills add pogicodes/poenv-skill`
 - [Agent install guide](https://github.com/pogicodes/poenv/blob/main/INSTALL.md): step-by-step, with what to do on each exit code
 - [README](https://github.com/pogicodes/poenv/blob/main/README.md): overview, install, demos
 - [Commands](https://github.com/pogicodes/poenv/blob/main/docs/commands.md): every command, --json and exit codes
