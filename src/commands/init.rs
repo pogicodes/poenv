@@ -7,7 +7,9 @@ use crate::errors::{PoenvError, Res, code};
 use crate::output::{bold, dim, emit_json, ok, say, show_phrase, warn};
 use crate::project::{MARKER, Project, ValuesMode, read_marker, write_env_file, write_marker};
 use crate::prompt::{ask, confirm, pick};
-use crate::repo::{Ignored, default_app_name, detect_project, ensure_agent_notes, ensure_ignored, env_files_with_keys, is_tracked};
+use crate::repo::{
+    Ignored, default_app_name, detect_project, ensure_agent_notes, ensure_ignored, env_files_with_keys, format_for, is_tracked,
+};
 use crate::repos::remember_repo;
 use crate::store::model::{DEFAULT_ENVS, Store, Target, Var, create_app, create_env, resolve_env, set_ref, set_var};
 use crate::store::{StoreHandle, init_store, open_store};
@@ -16,7 +18,7 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-pub const HELP: &str = "poenv init [--app NAME] [--env ENV] [--file FILE] [--format dotenv|next|python] [--no-import] [--yes]
+pub const HELP: &str = "poenv init [--app NAME] [--env ENV] [--file FILE] [--format dotenv|next|python|properties] [--no-import] [--yes]
 
 Set up this repo: create the app in your vault, import the existing env file,
 write .poenv, gitignore both and add poenv notes to AGENTS.md.
@@ -59,12 +61,14 @@ pub fn run(ctx: &Ctx, args: &[String]) -> Res<i32> {
     let detected = detect_project(&root);
     let format_name = v_format.clone().unwrap_or_else(|| detected.format.name().to_string());
     let Some(format) = Dialect::parse(&format_name) else {
-        return Err(PoenvError::new(format!("--format must be dotenv, next or python (got \"{format_name}\").")));
+        return Err(PoenvError::new(format!("--format must be dotenv, next, python or properties (got \"{format_name}\").")));
     };
     let file = match v_file.clone() {
         Some(f) => f,
         None => choose_file(&root, format, detected.file, interactive)?,
     };
+    // A detected format follows the file: Spring's keys may already live in a .env (Docker Compose).
+    let format = if v_format.is_some() { format } else { format_for(&file, format) };
     let mut app = v_app.clone().unwrap_or_else(|| default_app_name(&root));
     if interactive && v_app.is_none() {
         app = ask("App name", &app)?;
@@ -160,7 +164,7 @@ pub fn run(ctx: &Ctx, args: &[String]) -> Res<i32> {
 
     // Move imported keys into the managed block, then write the block for the chosen env.
     if import_into.is_some() && !found_keys.is_empty() {
-        write_file_atomic(&file_path, absorb_outside(&file_text, &found_keys)?.as_bytes(), file_mode(&file_path))?;
+        write_file_atomic(&file_path, absorb_outside(&file_text, &found_keys, format)?.as_bytes(), file_mode(&file_path))?;
     }
     if let Some(i) = &import_into {
         project.env = i.clone();

@@ -119,18 +119,18 @@ v2: Touch ID / Windows Hello confirmation for reveal.
 app  = "my-app"
 env  = "local"        # default env when `use` gets no argument and has no TTY
 file = ".env.local"   # target file
-format = "next"       # how values are quoted: dotenv | next | python
+format = "next"       # how values are quoted: dotenv | next | python | properties
 ```
-`init` picks `file` from the env files that already have keys (outside a poenv block; templates like `.env.example` don't count). With none, it's the framework's usual file: `.env.local` for Next.js and `.env` for everything else. With several, people pick one; agents and scripts get the usual file if it has keys, else `.env.local`, then `.env`. `--file` overrides all of this. It also makes sure the target file and `.poenv` are gitignored. A repo may commit `.poenv` instead (then a fresh clone's `init` adopts its settings); poenv leaves a tracked `.poenv` alone.
+`init` picks `file` from the env files that already have keys (outside a poenv block; templates like `.env.example` don't count). With none, it's the framework's usual file: `.env.local` for Next.js, `application.properties` for Spring Boot and `.env` for everything else. With several, people pick one; agents and scripts get the usual file if it has keys, else `.env.local`, then `.env`. `--file` overrides all of this. It also makes sure the target file and `.poenv` are gitignored. A repo may commit `.poenv` instead (then a fresh clone's `init` adopts its settings); poenv leaves a tracked `.poenv` alone.
 
-`init` also picks `format` (detected: `next` dependency → `next`; `pyproject.toml`/`requirements.txt` → `python`; otherwise `dotenv`). Loaders disagree about `$` and escapes. This was checked against the real libraries in `test/loaders.test.ts`:
+`init` also picks `format` (detected: `next` dependency → `next`; `pyproject.toml`/`requirements.txt` → `python`; `expo` dependency → `next`; Spring Boot in `pom.xml`/`build.gradle(.kts)`/`gradle/libs.versions.toml` → `properties`, with `application.properties` as the file; otherwise `dotenv`). A `.env*` file always gets a dotenv format. Loaders disagree about `$` and escapes. This was checked against the real libraries in `test/loaders.test.ts`:
 
 | | Node dotenv / Compose | Next.js | python-dotenv |
 |---|---|---|---|
 | `'p$$w $HOME'` | literal ✅ | expands `$HOME` ❌ | literal, but expands `${X}` ❌ |
 | `'p\$\$w'` | keeps backslashes ❌ | ✅ | ❌ |
 
-So values are quoted per format. A few values can't be written exactly in some formats: `${…}` for python, and values containing `'`, `` ` `` *and* `"` (or a literal `\n`) for dotenv/next. poenv writes those as best it can and **lists the keys**, suggesting `poenv run`, which injects variables directly and skips parsing.
+So values are quoted per format. A few values can't be written exactly in some formats: `${…}` for python and properties (Spring resolves it as a placeholder), and values containing `'`, `` ` `` *and* `"` (or a literal `\n`) for dotenv/next. poenv writes those as best it can and **lists the keys**, suggesting `poenv run`, which injects variables directly and skips parsing.
 
 ### Managed block
 poenv owns only this section of the target file. Everything outside it stays as you wrote it.

@@ -90,7 +90,7 @@ pub fn read_marker(root: &str) -> Res<Project> {
     let format_name = fields.get("format").cloned().unwrap_or_else(|| "dotenv".into());
     let Some(format) = Dialect::parse(&format_name) else {
         return Err(PoenvError::new(format!(
-            "{shown}: format must be one of dotenv, next, python (got \"{format_name}\")."
+            "{shown}: format must be one of dotenv, next, python, properties (got \"{format_name}\")."
         )));
     };
     let values_name = fields.get("values").cloned().unwrap_or_else(|| "file".into());

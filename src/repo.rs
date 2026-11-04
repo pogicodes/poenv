@@ -100,13 +100,37 @@ pub struct Detected {
 }
 
 pub fn detect_project(root: &str) -> Detected {
-    if uses_next(root) {
+    if has_dependency(root, "next") {
         return Detected { file: ".env.local", format: Dialect::Next };
     }
     if ["pyproject.toml", "requirements.txt", "Pipfile"].iter().any(|f| exists(&Path::new(root).join(f))) {
         return Detected { file: ".env", format: Dialect::Python };
     }
+    // Expo reads .env itself and expands `$VAR` like Next.js does.
+    if has_dependency(root, "expo") {
+        return Detected { file: ".env", format: Dialect::Next };
+    }
+    // Spring Boot doesn't read .env, but it loads ./application.properties from the folder the app
+    // starts in, over the one bundled in src/main/resources.
+    if uses_spring_boot(root) {
+        return Detected { file: "application.properties", format: Dialect::Properties };
+    }
     Detected { file: ".env", format: Dialect::Dotenv }
+}
+
+/// The format to read `file` with: a `.env*` file is never a `.properties` file, even in a Spring repo.
+pub fn format_for(file: &str, format: Dialect) -> Dialect {
+    let name = Path::new(file).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if format == Dialect::Properties && is_env_name(&name) { Dialect::Dotenv } else { format }
+}
+
+/// A Maven or Gradle build that uses Spring Boot (its plugin, starters or BOM).
+fn uses_spring_boot(root: &str) -> bool {
+    let builds = ["pom.xml", "build.gradle", "build.gradle.kts", "gradle/libs.versions.toml"];
+    builds.iter().any(|f| {
+        fs::read_to_string(Path::new(root).join(f))
+            .is_ok_and(|t| t.contains("org.springframework.boot") || t.contains("spring-boot"))
+    })
 }
 
 /// Committed templates, not real env files: `.env.example`, `.env.sample.local`, …
@@ -132,20 +156,21 @@ fn is_env_name(name: &str) -> bool {
 }
 
 /// Env files in `root` that have keys of their own (outside a poenv block): the ones `init` could
-/// import. `preferred` comes first, then `.env.local`, `.env`, the rest.
+/// import. `preferred` comes first, then `.env.local`, `.env`, the rest. `preferred` counts even when
+/// it isn't a `.env*` file (Spring's application.properties).
 pub fn env_files_with_keys(root: &str, format: Dialect, preferred: &str) -> Vec<String> {
     let rank = |f: &str| [preferred, ".env.local", ".env"].iter().position(|p| *p == f).unwrap_or(usize::MAX);
     let Ok(entries) = fs::read_dir(root) else { return vec![] };
     let mut files: Vec<String> = entries
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|f| is_env_name(f) && !is_template(f))
+        .filter(|f| (is_env_name(f) && !is_template(f)) || f == preferred)
         .filter(|f| {
             let path = Path::new(root).join(f);
             path.is_file()
                 && fs::read_to_string(&path)
                     .ok()
-                    .and_then(|t| parse_env_file(&t, format).ok())
+                    .and_then(|t| parse_env_file(&t, format_for(f, format)).ok())
                     .is_some_and(|p| !p.outside.is_empty())
         })
         .collect();
@@ -171,7 +196,8 @@ pub fn default_app_name(root: &str) -> String {
     if trimmed.is_empty() { "app".into() } else { trimmed.to_string() }
 }
 
-fn uses_next(root: &str) -> bool {
+/// True when package.json lists `name` in dependencies (or, failing that, devDependencies).
+fn has_dependency(root: &str, name: &str) -> bool {
     let Ok(text) = fs::read_to_string(Path::new(root).join("package.json")) else { return false };
     let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&text) else { return false };
     let truthy = |v: Option<&serde_json::Value>| match v {
@@ -179,7 +205,7 @@ fn uses_next(root: &str) -> bool {
         Some(serde_json::Value::String(s)) => !s.is_empty(),
         Some(_) => true,
     };
-    let dep = |section: &str| pkg.get(section).and_then(|d| d.get("next"));
+    let dep = |section: &str| pkg.get(section).and_then(|d| d.get(name));
     match dep("dependencies") {
         Some(v) if !v.is_null() => truthy(Some(v)),
         _ => truthy(dep("devDependencies")),

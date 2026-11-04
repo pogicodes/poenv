@@ -97,6 +97,82 @@ fn init_leaves_keys_poenv_cant_store_in_the_file() {
     assert!(human.stdout.contains("BAD.KEY can't be stored in poenv"));
 }
 
+/// A git repo with `file` (a build file or package.json) holding `contents`.
+fn repo_with(name: &str, file: &str, contents: &str) -> std::path::PathBuf {
+    let root = temp().join(name);
+    fs::create_dir_all(root.join("gradle")).unwrap();
+    git(&root, &["init", "-q"]);
+    fs::write(root.join(file), contents).unwrap();
+    root
+}
+
+const SPRING_POM: &str = "<project><parent><groupId>org.springframework.boot</groupId></parent></project>";
+
+#[test]
+fn init_writes_application_properties_in_a_spring_boot_repo() {
+    let t = T::new();
+    let root = repo_with("spring-app", "pom.xml", SPRING_POM);
+    let r = t.poenv(&root, &["init", "--json"]);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_match!(r.json(), { "file": "application.properties", "format": "properties" });
+    assert!(read(&root, ".gitignore").contains("/application.properties"));
+    t.poenv_in(&root, &["set", "DB_PASSWORD"], "p@ss wörd\\x");
+    let text = read(&root, "application.properties");
+    assert!(text.contains("DB_PASSWORD=p@ss w\\u00F6rd\\\\x"), "{text}");
+}
+
+#[test]
+fn init_imports_an_existing_application_properties() {
+    let t = T::new();
+    let root = repo_with("spring-app", "build.gradle.kts", "plugins { id(\"org.springframework.boot\") version \"3.3.0\" }");
+    fs::write(root.join("application.properties"), "DB_URL: jdbc:postgresql://localhost/dev\nserver.port=8081\n").unwrap();
+    let r = t.poenv(&root, &["init", "--json"]);
+    assert_match!(r.json(), { "file": "application.properties", "imported": ["DB_URL"], "invalid": ["server.port"] });
+    let text = read(&root, "application.properties");
+    assert!(text.contains("DB_URL=jdbc:postgresql://localhost/dev") && text.ends_with("server.port=8081\n"));
+    assert_eq!(count_lines_starting(&text, "DB_URL"), 1);
+}
+
+#[test]
+fn a_spring_repo_whose_keys_are_in_a_dotenv_file_keeps_the_dotenv_format() {
+    let t = T::new();
+    let root = repo_with("spring-app", "gradle/libs.versions.toml", "spring-boot = \"3.3.0\"\n");
+    fs::write(root.join(".env"), "DB_PASSWORD='p w'\n").unwrap();
+    assert_match!(t.poenv(&root, &["init", "--json"]).json(), { "file": ".env", "format": "dotenv", "imported": ["DB_PASSWORD"] });
+    assert!(read(&root, ".env").contains("DB_PASSWORD='p w'"));
+}
+
+#[test]
+fn init_detects_expo_and_leaves_plain_java_and_python_alone() {
+    let t = T::new();
+    let expo = repo_with("expo-app", "package.json", r#"{"dependencies":{"expo":"~52.0.0"}}"#);
+    assert_match!(t.poenv(&expo, &["init", "--json"]).json(), { "file": ".env", "format": "next" });
+    let java = repo_with("plain-java", "pom.xml", "<project><artifactId>lib</artifactId></project>");
+    assert_match!(t.poenv(&java, &["init", "--json"]).json(), { "file": ".env", "format": "dotenv" });
+    let mixed = repo_with("py-and-spring", "pom.xml", SPRING_POM);
+    fs::write(mixed.join("requirements.txt"), "flask\n").unwrap();
+    assert_match!(t.poenv(&mixed, &["init", "--json"]).json(), { "file": ".env", "format": "python" });
+}
+
+#[test]
+fn rotating_a_shared_key_rewrites_a_spring_repos_properties_file() {
+    let t = T::new();
+    let web = next_repo("web", "");
+    let api = repo_with("api", "pom.xml", SPRING_POM);
+    t.poenv(&web, &["init", "--json"]);
+    t.poenv(&api, &["init", "--json"]);
+    t.poenv_in(&web, &["set", "OPENAI_API_KEY", "--shared"], "sk-old");
+    t.poenv(&web, &["add", "OPENAI_API_KEY"]);
+    t.poenv(&api, &["add", "OPENAI_API_KEY"]);
+    fs::write(api.join("application.properties"), format!("{}server.port=8081\n", read(&api, "application.properties"))).unwrap();
+    assert!(read(&api, "application.properties").contains("OPENAI_API_KEY=sk-old"));
+    let r = t.poenv_in(&web, &["set", "OPENAI_API_KEY", "--shared", "--json"], "sk-new");
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    let text = read(&api, "application.properties");
+    assert!(text.contains("OPENAI_API_KEY=sk-new") && text.ends_with("server.port=8081\n"), "{text}");
+    assert!(read(&web, ".env.local").contains("OPENAI_API_KEY=sk-new"));
+}
+
 // ---- use ----
 
 #[test]

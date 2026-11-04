@@ -95,4 +95,4 @@ cargo test                       # unit, CLI end-to-end and TUI tests
 cargo build --release            # target/release/poenv
 ```
 
-The check against the real Node dotenv, Next.js and python-dotenv loaders runs in CI. To run it locally: `npm ci --prefix tests/loaders && pip install -r tests/loaders/requirements.txt`, then `POENV_TEST_LOADERS=1 cargo test --test loaders`.
+The check against the real Node dotenv, Next.js, Expo, python-dotenv, java.util.Properties and Spring Boot loaders runs in CI. To run it locally: `npm ci --prefix tests/loaders && pip install -r tests/loaders/requirements.txt`, put the Spring Boot jars in `tests/loaders/jars` (see `.github/workflows/test.yml`), then `POENV_TEST_LOADERS=1 cargo test --test loaders`. Java needs to be installed.
