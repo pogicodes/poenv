@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "description": "Test fixture only: the real Node loaders poenv's env file block is checked against (tests/loaders.rs).",
+  "type": "module",
+  "dependencies": {
+    "@next/env": "15.5.4",
+    "dotenv": "16.4.7"
+  }
+}

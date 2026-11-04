@@ -1,0 +1,235 @@
+# Run by hand (Actions → release → Run workflow): test, build every binary on its own OS, install
+# each one with the real installer, smoke-test it, then, if "publish" is ticked, tag vX.Y.Z on the
+# commit it ran on and publish a GitHub release. Unticked, it's a dry run. Pushing a version bump
+# releases nothing, so bump Cargo.toml whenever you like and release when you choose.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (X.Y.Z). Empty: the one in Cargo.toml."
+        required: false
+        default: ""
+      publish:
+        description: "Publish the release. Unticked: dry run."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  RUST_TOOLCHAIN: "1.99.1"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        env:
+          INPUT: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${INPUT#v}"
+          [ -n "$v" ] || v="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || { echo "::error::\"$v\" isn't a version like 1.2.3"; exit 1; }
+          if [ "$PUBLISH" = true ] && gh release view "v$v" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::v$v is already released. Bump Cargo.toml or pick another version."; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - run: cargo test --locked
+
+  build:
+    needs: [version, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: darwin-arm64, os: macos-latest, target: aarch64-apple-darwin }
+          - { name: darwin-x64, os: macos-latest, target: x86_64-apple-darwin }
+          # musl: fully static, so one binary runs on every Linux (glibc or not, old or new, containers).
+          - { name: linux-x64, os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { name: linux-arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { name: windows-x64, os: windows-latest, target: x86_64-pc-windows-msvc, ext: .exe }
+          - { name: windows-arm64, os: windows-11-arm, target: aarch64-pc-windows-msvc, ext: .exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update -q && sudo apt-get install -yq musl-tools
+      - name: Set the version
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # The first `version = ` line is [package]'s. awk, so it's the same on macOS, Linux and Windows.
+          awk -v v="$VERSION" '!done && /^version = "/ { $0 = "version = \"" v "\""; done = 1 } 1' Cargo.toml > Cargo.toml.new
+          mv Cargo.toml.new Cargo.toml
+          cargo update --workspace # only poenv's own entry in Cargo.lock; dependencies stay pinned
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Check the binary
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/poenv${{ matrix.ext }}"
+          [ "$("$bin" --version)" = "${{ needs.version.outputs.version }}" ]
+          ls -l "$bin"
+      - shell: bash
+        run: |
+          mkdir dist
+          cp "target/${{ matrix.target }}/release/poenv${{ matrix.ext }}" "dist/poenv-${{ matrix.name }}${{ matrix.ext }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.name }}
+          path: dist/
+
+  dist:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bin-*
+          path: dist
+          merge-multiple: true
+      - run: |
+          cd dist
+          sha256sum poenv-* > SHA256SUMS
+          cat SHA256SUMS
+          ls -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  smoke:
+    needs: [version, dist]
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS arm64 runners often queue for long; the build job already runs that binary.
+        os: [macos-15-intel, ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    env:
+      EXPECTED: ${{ needs.version.outputs.version }}
+      POENV_HOME: ${{ github.workspace }}/vault-home
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Install with install.sh
+        if: runner.os != 'Windows'
+        run: |
+          POENV_DOWNLOAD_BASE="$PWD/dist" sh site/install.sh --yes --dir "$RUNNER_TEMP/bin" --no-modify-path
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Install with install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:POENV_DOWNLOAD_BASE = "$PWD\dist"
+          $env:POENV_INSTALL_DIR = "$env:RUNNER_TEMP\bin"
+          ./site/install.ps1
+          if (([Environment]::GetEnvironmentVariable("Path", "User") -split ';') -notcontains $env:POENV_INSTALL_DIR) { throw "user PATH not updated" }
+          "$env:RUNNER_TEMP\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -x
+          [ "$(poenv --version)" = "$EXPECTED" ]
+          poenv --help | grep -q "poenv use"
+          # No vault yet: doctor must say only the user can fix it (exit 5), as clean JSON.
+          set +e; poenv doctor --json > doctor.json; code=$?; set -e
+          cat doctor.json
+          [ "$code" = 5 ]
+          # Outside a repo, status exits 2 and agents get the fix.
+          set +e; poenv status --json > status.json; code=$?; set -e
+          [ "$code" = 2 ] && grep -q '"fix":"poenv init"' status.json
+
+      # The everyday flow with the installed binary: init, set, use, import, shared keys, run, envs,
+      # refusals. Cargo only creates the vault (the CLI leaves that to a person).
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Everyday flow
+        shell: bash
+        run: POENV_HOME="$RUNNER_TEMP/flow-home" bash scripts/smoke-flow.sh
+
+      - name: TUI opens in a terminal (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          # In a pty with no agent markers, `poenv` takes the TUI path. With no vault it stops at
+          # "isn't set up", which proves the terminal detection works in the release binary.
+          if [ "$RUNNER_OS" = macOS ]; then
+            out=$(env -u CI script -q /dev/null poenv 2>&1 || true)
+          else
+            out=$(env -u CI script -qec poenv /dev/null 2>&1 || true)
+          fi
+          echo "$out"
+          echo "$out" | grep -q "isn't set up"
+
+  # The static Linux binary in distros the runners don't cover: musl (Alpine), and old and new glibc.
+  linux-distros:
+    needs: [version, dist]
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["alpine:3.20", "debian:11-slim", "fedora:41", "ubuntu:20.04", "archlinux:latest"]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    env:
+      EXPECTED: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Install and run
+        run: |
+          set -e
+          b=dist/poenv-linux-x64
+          chmod +x "$b"
+          [ "$("$b" --version)" = "$EXPECTED" ]
+          "$b" --help | grep -q "poenv use"
+          set +e; POENV_HOME=/tmp/vault "$b" doctor --json > doctor.json; code=$?; set -e
+          cat doctor.json
+          [ "$code" = 5 ]
+
+  publish:
+    needs: [version, smoke, linux-distros]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.version.outputs.version }}
+        run: |
+          # Creates the tag on the commit the workflow ran on.
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "poenv $TAG" --generate-notes

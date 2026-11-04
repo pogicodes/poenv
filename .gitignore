@@ -1,0 +1,5 @@
+/target/
+dist/
+# Demo sources: kept locally, only the rendered GIFs are committed.
+docs/demo/video/
+docs/demo/render.sh

@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>poenv docs</title>
+<meta name="description" content="Your configs and secrets in one encrypted local vault. Switch a repo's .env between environments with one command. Agent-safe.">
+<style>
+  :root {
+    --bg: #fbfaf8; --fg: #1d1b18; --muted: #6b665e; --line: #e4e0d9; --code-bg: #f1eee9; --accent: #3b6e4f;
+    --note-bg: #eef4ef; --warn-bg: #f8f1e4; --warn-line: #e3cfa6;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151413; --fg: #ece9e4; --muted: #a39d93; --line: #2c2a27; --code-bg: #1f1d1b; --accent: #7fbf97;
+      --note-bg: #18221c; --warn-bg: #241f16; --warn-line: #4a3d24;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 72px; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  header.top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 16px; height: 56px; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header.top .brand { font: 600 1.1rem var(--mono); color: var(--fg); text-decoration: none; }
+  header.top nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
+  header.top nav a { color: var(--muted); text-decoration: none; }
+  header.top nav a:hover { color: var(--fg); }
+  #menu { display: none; border: 1px solid var(--line); background: transparent; color: var(--fg); border-radius: 6px; font: inherit; font-size: 14px; padding: 4px 10px; cursor: pointer; }
+
+  .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); max-width: 1080px; margin: 0 auto; gap: 48px; padding: 0 16px; }
+  aside { position: sticky; top: 56px; align-self: start; max-height: calc(100vh - 56px); overflow-y: auto; padding: 32px 0; font-size: 14px; }
+  aside .group { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 20px 0 6px; }
+  aside .group:first-child { margin-top: 0; }
+  aside a { display: block; padding: 3px 10px; margin-left: -10px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; }
+  aside a:hover { color: var(--fg); }
+  aside a.active { color: var(--accent); border-left-color: var(--accent); }
+
+  main { padding: 40px 0 80px; min-width: 0; max-width: 720px; }
+  section { margin-bottom: 56px; }
+  h1 { font: 600 2.2rem/1.2 var(--mono); margin: 0 0 12px; }
+  h2 { font-size: 1.5rem; line-height: 1.3; margin: 0 0 12px; padding-top: 8px; }
+  h3 { font-size: 1.05rem; margin: 28px 0 8px; }
+  h2 a.anchor, h3 a.anchor { color: var(--line); text-decoration: none; margin-left: 6px; opacity: 0; }
+  h2:hover a.anchor, h3:hover a.anchor { opacity: 1; }
+  p { margin: 0 0 14px; }
+  .lede { color: var(--muted); font-size: 1.15rem; }
+  a { color: var(--accent); }
+  code { font: .9em var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre code, .cmd code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+  ul, ol { padding-left: 22px; margin: 0 0 14px; }
+  li { margin: 4px 0; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 48px 0; }
+
+  .cmd { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); overflow: hidden; margin: 6px 0 4px; }
+  .cmd code { flex: 1; padding: 12px 14px; font: 14px/1.5 var(--mono); overflow-x: auto; white-space: nowrap; }
+  .label { font-size: 13px; color: var(--muted); margin-top: 16px; }
+  .codewrap { position: relative; margin: 8px 0 16px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font: 14px/1.6 var(--mono); overflow-x: auto; margin: 0; }
+  .copy { border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 13px; padding: 0 14px; cursor: pointer; }
+  .codewrap .copy { position: absolute; top: 6px; right: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 2px 8px; opacity: 0; transition: opacity .15s; }
+  .codewrap:hover .copy, .copy:focus-visible { opacity: 1; }
+  .copy:hover { color: var(--fg); }
+  .c { color: var(--muted); }
+
+  .table { overflow-x: auto; margin: 8px 0 16px; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  th { font-weight: 600; background: var(--code-bg); }
+  td code { white-space: nowrap; }
+  .keys td:first-child { width: 150px; white-space: nowrap; }
+  .demo { margin: 16px 0 20px; }
+  .demo img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; }
+
+  .note, .warn { border-radius: 8px; padding: 12px 14px; margin: 12px 0 16px; font-size: 15px; }
+  .note { background: var(--note-bg); border: 1px solid var(--line); }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); }
+  .note p:last-child, .warn p:last-child { margin: 0; }
+
+  .features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }
+  .features div { border: 1px solid var(--line); border-radius: 8px; padding: 14px; font-size: 15px; }
+  .features strong { display: block; margin-bottom: 4px; }
+
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps > li { counter-increment: step; position: relative; padding-left: 40px; margin: 0 0 20px; }
+  .steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--code-bg); font: 600 13px/26px var(--mono); text-align: center; }
+
+  kbd { font: 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--code-bg); }
+  footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    #menu { display: block; }
+    header.top nav { display: none; }
+    aside { display: none; position: fixed; inset: 56px 0 0 0; max-height: none; background: var(--bg); padding: 24px 26px; z-index: 9; }
+    body.menu-open aside { display: block; }
+    body.menu-open { overflow: hidden; }
+    .features { grid-template-columns: minmax(0, 1fr); }
+    .cmds tr:first-child { display: none; }
+    .cmds td { display: block; border: 0; padding: 0 12px; }
+    .cmds td:first-child { padding-top: 10px; }
+    .cmds td:last-child { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .cmds tr:last-child td:last-child { border-bottom: 0; }
+    .cmds td code { white-space: normal; }
+    main { padding-top: 28px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#top">poenv</a>
+  <nav>
+    <a href="#install">Install</a>
+    <a href="#commands">Commands</a>
+    <a href="#agents">AI agents</a>
+    <a href="https://github.com/pogicodes/poenv">GitHub</a>
+  </nav>
+  <button id="menu" type="button" aria-expanded="false" aria-controls="toc">Menu</button>
+</header>
+
+<div class="layout">
+  <aside id="toc">
+    <div class="group">Start</div>
+    <a href="#top">Overview</a>
+    <a href="#install">Install</a>
+    <a href="#quickstart">Quick start</a>
+    <a href="#concepts">Concepts</a>
+    <div class="group">Guides</div>
+    <a href="#switching">Switching envs</a>
+    <a href="#shared">Shared keys</a>
+    <a href="#protected">Protected envs</a>
+    <a href="#run">Running without a file</a>
+    <a href="#frameworks">Frameworks &amp; formats</a>
+    <a href="#spring">Java &amp; Spring Boot</a>
+    <a href="#tui">The TUI</a>
+    <a href="#ci">CI &amp; servers</a>
+    <a href="#backup">Backup &amp; recovery</a>
+    <div class="group">Reference</div>
+    <a href="#commands">Commands</a>
+    <a href="#exit-codes">Exit codes</a>
+    <a href="#envfile">The env file</a>
+    <a href="#poenv-file">The .poenv file</a>
+    <a href="#files">Files &amp; settings</a>
+    <div class="group">More</div>
+    <a href="#agents">For AI agents</a>
+    <a href="#security">Security model</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+  </aside>
+
+  <main>
+    <section id="top">
+      <h1>poenv</h1>
+      <p class="lede">Your configs and secrets in one encrypted vault on your machine. Switch a repo's <code>.env</code> between environments with one command, and let AI agents use your secrets without poenv ever showing them the values.</p>
+      <div class="codewrap"><pre>cd my-app
+poenv init                 <span class="c"># import the env file into the vault</span>
+poenv use staging          <span class="c"># the env file is now on staging</span>
+poenv add OPENAI_API_KEY   <span class="c"># pull in a key you share across apps</span>
+poenv run -- npm test     <span class="c"># inject the env without writing a file</span></pre></div>
+      <div class="features">
+        <div><strong>One local vault</strong>A single AES-256-GCM file, opened by a key from your recovery phrase. No password to type, the same on macOS, Linux and Windows. No server, no account.</div>
+        <div><strong>Whole-folder switching</strong><code>poenv use staging</code> rewrites the env file itself, so Next.js, Vite, Prisma, Docker Compose and Python all see the new env without wrappers.</div>
+        <div><strong>Shared keys</strong>Set <code>OPENAI_API_KEY</code> once, reference it from every app, rotate it in one place.</div>
+        <div><strong>Agent-safe</strong>Agents can list key names, switch envs and run commands, but poenv never prints a value to them, and they can't touch <code>prod</code>.</div>
+      </div>
+    </section>
+
+    <section id="install">
+      <h2>Install</h2>
+      <div class="label">macOS &amp; Linux</div>
+      <div class="cmd"><code>curl -fsSL https://poenv.pogi.codes/install.sh | sh</code><button class="copy" type="button">Copy</button></div>
+      <div class="label">Windows (PowerShell)</div>
+      <div class="cmd"><code>irm https://poenv.pogi.codes/install.ps1 | iex</code><button class="copy" type="button">Copy</button></div>
+      <p class="label">No sudo or admin rights. Installs to <code>~/.local/bin</code> (Windows: <code>%LOCALAPPDATA%\poenv\bin</code>), checks the SHA-256 and adds that folder to your PATH.</p>
+
+      <h3>Installer options</h3>
+      <div class="table"><table>
+        <tr><th><code>install.sh</code> flag</th><th>Env var (both installers)</th><th>Does</th></tr>
+        <tr><td><code>--version X</code></td><td><code>POENV_VERSION</code></td><td>Install a specific release</td></tr>
+        <tr><td><code>--dir PATH</code></td><td><code>POENV_INSTALL_DIR</code></td><td>Install somewhere else</td></tr>
+        <tr><td><code>--no-modify-path</code></td><td><code>POENV_NO_MODIFY_PATH</code></td><td>Leave your PATH alone</td></tr>
+        <tr><td><code>--yes</code></td><td></td><td>Don't ask anything (for agents and scripts)</td></tr>
+      </table></div>
+      <p>Pass flags through <code>sh -s --</code>:</p>
+      <div class="codewrap"><pre>curl -fsSL https://poenv.pogi.codes/install.sh | sh -s -- --version 0.0.2</pre></div>
+      <p>On Windows, set the env vars before running the installer. You can also download a binary from <a href="https://github.com/pogicodes/poenv/releases">Releases</a> (macOS, Linux and Windows, x64 and arm64).</p>
+
+      <h3>Update</h3>
+      <p>Run the installer again. It replaces the binary and leaves your vault, PATH and repos alone. <code>poenv --version</code> shows what you have; <code>--version X</code> pins or rolls back.</p>
+
+      <h3>Uninstall</h3>
+      <ol>
+        <li>Delete the binary: <code>rm ~/.local/bin/poenv</code> (Windows: <code>%LOCALAPPDATA%\poenv\bin\poenv.exe</code>).</li>
+        <li>Remove the line ending in <code># added by poenv installer</code> from your shell rc file (Windows: remove the folder from your user <code>Path</code>).</li>
+        <li>Optional and permanent: delete the vault in <code>~/.poenv</code> (Windows: <code>%APPDATA%\poenv</code>). Run <code>poenv backup</code> first if you might want your secrets back.</li>
+      </ol>
+      <p>Repos keep working: each env file still holds the env it was last switched to. Delete <code>.poenv</code> and the poenv section in <code>AGENTS.md</code> if you like.</p>
+    </section>
+
+    <section id="quickstart">
+      <h2>Quick start</h2>
+      <ol class="steps">
+        <li>
+          <strong>Check your setup.</strong>
+          <div class="codewrap"><pre>poenv doctor</pre></div>
+          It checks PATH, the vault and the current repo, and prints the exact command for anything to fix.
+        </li>
+        <li>
+          <strong>Set up a repo.</strong>
+          <div class="codewrap"><pre>cd your-repo
+poenv init</pre></div>
+          The first time on a machine, <code>init</code> creates your vault and shows a <strong>24-word recovery phrase, once</strong>. Save it in your password manager: it opens your backups, and rebuilds this machine's key if it's ever lost. There's no password: poenv opens the vault on its own.
+          <p style="margin:12px 0 0"><code>init</code> then imports your existing env file into the <code>local</code> env, creates <code>staging</code> and <code>prod</code> (protected), writes <code>.poenv</code>, gitignores it and the env file, and adds poenv notes to <code>AGENTS.md</code> or <code>CLAUDE.md</code>.</p>
+        </li>
+        <li>
+          <strong>Fill in another env and switch to it.</strong>
+          <div class="codewrap"><pre>poenv set DATABASE_URL --env staging   <span class="c"># asks for the value, hidden</span>
+poenv use staging</pre></div>
+          Or paste <code>KEY=VALUE</code> lines into the env file and run <code>poenv import --env staging</code>, or run <code>poenv</code> on its own to edit everything in the <a href="#tui">TUI</a>.
+        </li>
+      </ol>
+      <figure class="demo"><img src="https://raw.githubusercontent.com/pogicodes/poenv/main/docs/demo/init.gif" alt="poenv init: save the recovery phrase, import .env.local into the vault" width="1000" height="625" loading="lazy"></figure>
+    </section>
+
+    <section id="concepts">
+      <h2>Concepts</h2>
+      <div class="table"><table>
+        <tr><th>Term</th><th>Means</th></tr>
+        <tr><td><strong>Vault</strong></td><td>One encrypted file on your machine holding every app, env and key. App names and key names are encrypted too, not only values.</td></tr>
+        <tr><td><strong>App</strong></td><td>One per repo, e.g. <code>my-app</code>. Named in the repo's <code>.poenv</code> file.</td></tr>
+        <tr><td><strong>Env</strong></td><td>A set of keys for an app: <code>local</code>, <code>staging</code>, <code>prod</code>, or any name you add. An env can be <strong>protected</strong>.</td></tr>
+        <tr><td><strong>Key</strong></td><td>A name and a value. Every change keeps the previous value: the last 10 versions per key.</td></tr>
+        <tr><td><strong>Shared key</strong></td><td>A key that belongs to no app, like <code>OPENAI_API_KEY</code>. Apps hold a live reference to it, optionally under another name.</td></tr>
+        <tr><td><strong>Managed block</strong></td><td>The section at the top of the env file that poenv writes. Everything outside it is yours.</td></tr>
+      </table></div>
+    </section>
+
+    <hr>
+
+    <section id="switching">
+      <h2>Switching envs</h2>
+      <div class="codewrap"><pre>poenv use staging</pre></div>
+      <pre>✓ my-app: local → staging  (.env.local)
+  ~ DATABASE_URL
+  ~ STRIPE_SECRET_KEY
+  + SENTRY_DSN</pre>
+      <p style="margin-top:12px">poenv rewrites the <a href="#envfile">managed block</a> of the repo's env file and lists what changed, by key name only. With no argument, <code>poenv use</code> opens a picker. Running apps need a restart unless they reload <code>.env</code> themselves.</p>
+      <figure class="demo"><img src="https://raw.githubusercontent.com/pogicodes/poenv/main/docs/demo/use.gif" alt="poenv use staging: .env.local switches from local to staging" width="1000" height="625" loading="lazy"></figure>
+      <h3>Manage envs</h3>
+      <div class="codewrap"><pre>poenv env new preview --from staging   <span class="c"># copy an env (or omit --from for an empty one)</span>
+poenv env rename preview qa            <span class="c"># the env file and .poenv follow</span>
+poenv ls                               <span class="c"># apps, envs and key names</span></pre></div>
+      <h3>Show the env in your prompt</h3>
+      <p><code>poenv status --short</code> prints <code>my-app:staging</code>. It never opens the vault, so it's instant and safe to run on every prompt.</p>
+    </section>
+
+    <section id="shared">
+      <h2>Shared keys</h2>
+      <p>Keys you use in many apps, like an API key, belong in the shared pool. Set it once, then reference it from each app:</p>
+      <div class="codewrap"><pre>poenv set OPENAI_API_KEY --shared              <span class="c"># once</span>
+poenv add OPENAI_API_KEY                       <span class="c"># in each repo: a live reference</span>
+poenv add OPENAI_API_KEY --as NEXT_PUBLIC_OPENAI_KEY   <span class="c"># under another name</span></pre></div>
+      <p>Rotating it with <code>poenv set OPENAI_API_KEY --shared</code> rewrites the env file of every repo on this machine that uses it, and lists those files.</p>
+      <p>To copy a value once instead, with no link, take it from another app: <code>poenv add STRIPE_KEY --from other-app/staging</code>.</p>
+      <p>When <code>init</code> finds a key with the same name and value in another app, it offers to move it into the shared pool and turn each copy into a reference.</p>
+      <figure class="demo"><img src="https://raw.githubusercontent.com/pogicodes/poenv/main/docs/demo/shared.gif" alt="Shared keys: blog shares OPENAI_API_KEY with shop, then one rotation updates both env files" width="1000" height="625" loading="lazy"></figure>
+      <h3>Removing a shared key</h3>
+      <p>poenv never leaves dangling references. If apps still use the key, choose:</p>
+      <ul>
+        <li><code>poenv rm KEY --shared --keep-copies</code>: each app keeps its own copy, with history. This is how you undo sharing.</li>
+        <li><code>poenv rm KEY --shared --everywhere</code>: the references go too.</li>
+      </ul>
+    </section>
+
+    <section id="protected">
+      <h2>Protected envs</h2>
+      <p><code>prod</code> is protected from the start. Switching to a protected env, running with it, or copying or renaming it asks a person to type a confirmation. Agents and scripts are refused with <a href="#exit-codes">exit 4</a>, and <code>--yes</code> doesn't skip it. Toggle protection on any env with <kbd>P</kbd> in the <a href="#tui">TUI</a>.</p>
+    </section>
+
+    <section id="run">
+      <h2>Running without a file</h2>
+      <div class="codewrap"><pre>poenv run -- npm test                 <span class="c"># the current env</span>
+poenv run staging -- npm run migrate  <span class="c"># another env</span></pre></div>
+      <p><code>poenv run</code> injects the env as variables into one command and leaves the env file alone. Nothing is written to disk and no quoting applies, so use it for tools that don't read <code>.env</code>, for values a loader can't parse, or when you'd rather not have secrets in a file at all. It passes through the command's output and exit code. Anything after <code>--</code>, including <code>--json</code>, belongs to your command.</p>
+      <figure class="demo"><img src="https://raw.githubusercontent.com/pogicodes/poenv/main/docs/demo/run.gif" alt="poenv run: staging and prod are injected into single commands while .env.local stays on local" width="1000" height="625" loading="lazy"></figure>
+    </section>
+
+    <section id="frameworks">
+      <h2>Frameworks &amp; formats</h2>
+      <p>poenv works with anything that reads a <code>.env</code>-style file. <code>init</code> picks the file and quoting format from the repo:</p>
+      <div class="table"><table>
+        <tr><th>Repo</th><th>File</th><th>Format</th></tr>
+        <tr><td>Next.js (<code>next</code> in <code>package.json</code>)</td><td><code>.env.local</code></td><td><code>next</code></td></tr>
+        <tr><td>Python (<code>pyproject.toml</code>, <code>requirements.txt</code> or <code>Pipfile</code>)</td><td><code>.env</code></td><td><code>python</code></td></tr>
+        <tr><td>Anything else: Vite, Remix, Express, Bun, Docker Compose…</td><td><code>.env</code></td><td><code>dotenv</code></td></tr>
+      </table></div>
+      <p>If the repo's env files already hold keys, <code>init</code> uses the file that has them (and asks when several do). Override with <code>--file</code> and <code>--format</code>, or edit <a href="#poenv-file"><code>.poenv</code></a>.</p>
+      <p>The format only matters for values containing <code>$</code> or escapes, which loaders read differently. Each format is checked in CI against the real Node dotenv, Next.js and python-dotenv loaders.</p>
+      <div class="note"><p><strong>Vite and Bun</strong> expand <code>$VAR</code> in env files, so they'd read the <code>dotenv</code> format's unescaped <code>$</code> as a variable. Use <code>--format next</code> there, which escapes it as <code>\$</code>.</p></div>
+      <p>A few values can't be written exactly in some formats (for example <code>${…}</code> for python). poenv writes them as best it can, lists the keys, and suggests <a href="#run"><code>poenv run</code></a>.</p>
+    </section>
+
+    <section id="spring">
+      <h2>Java &amp; Spring Boot</h2>
+      <p>Spring Boot doesn't read <code>.env</code> files, so <code>poenv use</code> alone changes nothing for it. Inject the env with <code>poenv run</code>:</p>
+      <div class="codewrap"><pre>poenv run -- ./mvnw spring-boot:run
+poenv run staging -- ./gradlew bootRun</pre></div>
+      <p>Spring reads environment variables natively: reference them in <code>application.properties</code> (<code>spring.datasource.password=${DB_PASSWORD}</code>), or name keys for relaxed binding (<code>SPRING_DATASOURCE_URL</code> sets <code>spring.datasource.url</code>).</p>
+      <p>With Docker Compose, <code>env_file: .env</code> reads the file poenv writes. Avoid <code>spring.config.import=optional:file:.env[.properties]</code>: properties files don't strip quotes, so any value poenv quotes keeps its quotes.</p>
+    </section>
+
+    <section id="tui">
+      <h2>The TUI</h2>
+      <p>Run <code>poenv</code> on its own in a terminal to browse and edit apps, envs and keys. Values stay masked until you press <kbd>v</kbd>. Inside a repo it opens on that repo's app. Lowercase keys act on the selected key, uppercase on the whole env.</p>
+      <figure class="demo"><img src="https://raw.githubusercontent.com/pogicodes/poenv/main/docs/demo/tui.gif" alt="The TUI: reveal a value, flip between envs, press u to switch .env.local to staging" width="1000" height="625" loading="lazy"></figure>
+      <div class="table keys"><table>
+        <tr><th colspan="2">Key actions</th></tr>
+        <tr><td><kbd>a</kbd></td><td>Add a key</td></tr>
+        <tr><td><kbd>r</kbd></td><td>Add a reference to a shared key (optionally renamed)</td></tr>
+        <tr><td><kbd>e</kbd> / <kbd>⏎</kbd></td><td>Edit the value</td></tr>
+        <tr><td><kbd>d</kbd></td><td>Delete the key</td></tr>
+        <tr><td><kbd>s</kbd></td><td>Move the key into the shared pool (keeps its history)</td></tr>
+        <tr><td><kbd>v</kbd></td><td>Show / hide the value</td></tr>
+        <tr><th colspan="2">Env actions</th></tr>
+        <tr><td><kbd>u</kbd></td><td>Use this env: writes the env file, like <code>poenv use</code></td></tr>
+        <tr><td><kbd>A</kbd></td><td>New env</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Rename env</td></tr>
+        <tr><td><kbd>P</kbd></td><td>Toggle protected</td></tr>
+        <tr><td><kbd>D</kbd></td><td>Delete env</td></tr>
+        <tr><th colspan="2">Navigation</th></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd> / <kbd>tab</kbd></td><td>Previous / next env</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Previous / next key (vim's <kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd> work too)</td></tr>
+        <tr><td><kbd>esc</kbd> / <kbd>backspace</kbd></td><td>Back to the app list</td></tr>
+        <tr><td><kbd>i</kbd></td><td>Set up this repo (shown when it isn't yet)</td></tr>
+        <tr><td><kbd>q</kbd></td><td>Quit</td></tr>
+      </table></div>
+    </section>
+
+    <section id="ci">
+      <h2>CI &amp; servers</h2>
+      <p>poenv opens the vault without a prompt, so scripts and CI work as long as the vault is on the machine. To put it on a server, copy the vault folder (<code>store.enc</code> and <code>keys.json</code>), or run <code>poenv restore</code> there once in a terminal (it asks for your recovery phrase).</p>
+      <p>Set <code>POENV_HOME</code> to keep the vault somewhere other than the default folder.</p>
+    </section>
+
+    <section id="backup">
+      <h2>Backup &amp; recovery</h2>
+      <div class="codewrap"><pre>poenv backup backup.enc    <span class="c"># encrypted copy of the vault</span>
+poenv restore backup.enc   <span class="c"># restore it, on this machine or another</span></pre></div>
+      <p>A backup plus your recovery phrase restores everything on any machine: on a new machine, <code>restore</code> asks for the phrase. Restoring over an existing vault asks first and keeps the old one as <code>store.enc.bak-&lt;time&gt;</code>.</p>
+      <div class="table"><table>
+        <tr><th>Situation</th><th>Run</th></tr>
+        <tr><td>This machine lost its key (<code>keys.json</code>)</td><td><code>poenv recover</code>: type the phrase</td></tr>
+        <tr><td>Check the phrase you saved is right</td><td><code>poenv recover --check</code></td></tr>
+        <tr><td>Phrase may have leaked</td><td><code>poenv recover --new-phrase</code> (older backups still need the old phrase)</td></tr>
+        <tr><td>Undo a bad change to a key</td><td><code>poenv history KEY</code>, then <code>poenv rollback KEY [N]</code></td></tr>
+      </table></div>
+      <div class="warn"><p>Lose both this machine's key and the phrase, and the vault can't be opened. Nobody can reset it for you.</p></div>
+    </section>
+
+    <hr>
+
+    <section id="commands">
+      <h2>Commands</h2>
+      <p>Every command takes <code>--json</code> for machine-readable output, except <code>poenv run</code>. Values are never accepted as arguments: <code>set</code> asks for them hidden, or reads them from stdin.</p>
+      <h3>Daily</h3>
+      <div class="table cmds"><table>
+        <tr><th>Command</th><th>Does</th></tr>
+        <tr><td><code>poenv</code></td><td>Open the <a href="#tui">TUI</a></td></tr>
+        <tr><td><code>poenv use [ENV]</code></td><td>Switch this repo's env file to ENV (picker if omitted)</td></tr>
+        <tr><td><code>poenv add KEY [--as NAME] [--from APP/ENV] [--env ENV]</code></td><td>Add a shared key (live reference) or copy one from another app</td></tr>
+        <tr><td><code>poenv status [--short]</code></td><td>Current app and env (<code>--short</code> → <code>my-app:staging</code>)</td></tr>
+        <tr><td><code>poenv run [ENV] -- CMD</code></td><td>Run CMD with ENV injected, without touching the file</td></tr>
+      </table></div>
+      <h3>Setup &amp; management</h3>
+      <div class="table cmds"><table>
+        <tr><th>Command</th><th>Does</th></tr>
+        <tr><td><code>poenv init [--app NAME] [--env ENV] [--file FILE] [--format F] [--no-import] [--yes]</code></td><td>Set up a repo: import the env file, write <code>.poenv</code>, gitignore, agent notes</td></tr>
+        <tr><td><code>poenv set KEY [--shared] [--env ENV] [--empty]</code></td><td>Set a value (asked for hidden, or piped in). Empty input is an error unless <code>--empty</code></td></tr>
+        <tr><td><code>poenv import [--env ENV]</code></td><td>Save keys you pasted into the env file to the current env (or ENV), overwriting existing ones</td></tr>
+        <tr><td><code>poenv rm KEY [--shared [--keep-copies | --everywhere]] [--env ENV]</code></td><td>Remove a key (see <a href="#shared">shared keys</a>)</td></tr>
+        <tr><td><code>poenv env new NAME [--from ENV]</code></td><td>Add an env, empty or a copy of ENV</td></tr>
+        <tr><td><code>poenv env rename OLD NEW</code></td><td>Rename an env; the env file and <code>.poenv</code> follow</td></tr>
+        <tr><td><code>poenv file [NAME]</code></td><td>Show or change the env file poenv manages; the block moves with it</td></tr>
+        <tr><td><code>poenv ls [APP]</code></td><td>Apps, envs and key names (never values)</td></tr>
+        <tr><td><code>poenv doctor [--fix]</code></td><td>Check your setup; <code>--fix</code> applies the safe fixes</td></tr>
+      </table></div>
+      <h3>Just for you</h3>
+      <p>These reveal values or touch the whole vault, so they're refused for agents and scripts (exit 4).</p>
+      <div class="table cmds"><table>
+        <tr><th>Command</th><th>Does</th></tr>
+        <tr><td><code>poenv get KEY [--shared] [--env ENV]</code></td><td>Print a value</td></tr>
+        <tr><td><code>poenv history KEY [--show]</code></td><td>Previous values (last 10, masked unless <code>--show</code>)</td></tr>
+        <tr><td><code>poenv rollback KEY [N]</code></td><td>Restore a previous value</td></tr>
+        <tr><td><code>poenv backup [FILE] [--force]</code></td><td>Encrypted backup</td></tr>
+        <tr><td><code>poenv restore FILE</code></td><td>Restore a backup</td></tr>
+        <tr><td><code>poenv recover [--check | --new-phrase]</code></td><td>Use your phrase / check it / make a new one</td></tr>
+      </table></div>
+      <p><code>history</code>, <code>rollback</code> and <code>rm</code> also take <code>--shared</code> and <code>--env ENV</code>.</p>
+    </section>
+
+    <section id="exit-codes">
+      <h2>Exit codes</h2>
+      <p>Stable, so scripts and agents can act on them. Errors always say the command that fixes them.</p>
+      <div class="table"><table>
+        <tr><th>Code</th><th>Means</th><th>What to do</th></tr>
+        <tr><td><code>0</code></td><td>OK</td><td></td></tr>
+        <tr><td><code>1</code></td><td>Error</td><td>Read the message; try <code>poenv doctor</code></td></tr>
+        <tr><td><code>2</code></td><td>Not set up (no <code>.poenv</code> or no vault)</td><td><code>poenv init</code></td></tr>
+        <tr><td><code>3</code></td><td>Unknown app, env or key</td><td><code>poenv ls</code> to see what exists</td></tr>
+        <tr><td><code>4</code></td><td>Refused: human-only command or protected env</td><td>A person runs it in their own terminal</td></tr>
+        <tr><td><code>5</code></td><td>Waiting on the user (the vault needs creating, or its key is missing)</td><td>A person runs <code>poenv init</code> or <code>poenv recover</code></td></tr>
+      </table></div>
+    </section>
+
+    <section id="envfile">
+      <h2>The env file</h2>
+      <p>poenv owns one block at the top of the env file and never touches anything else (except during <code>init</code> and <code>import</code>, which move the keys they import into the block):</p>
+      <div class="codewrap"><pre># &gt;&gt;&gt; poenv &gt;&gt;&gt; (managed: edits here are overwritten)
+# app: my-app  env: staging
+DATABASE_URL=postgres://staging-db/app
+OPENAI_API_KEY='sk-…'
+# &lt;&lt;&lt; poenv &lt;&lt;&lt;
+
+DEBUG=true   <span class="c"># yours: kept as-is, and it wins over the block</span></pre></div>
+      <p>Because the block is at the top, your own lines below it override it in every loader. A key set in both places is reported as a conflict.</p>
+      <p>A change made anywhere (<code>set</code>, <code>add</code>, <code>rm</code>, <code>rollback</code>, or the TUI) also rewrites the block in every other repo on this machine whose current env it affects. Each repo stays on its own env.</p>
+    </section>
+
+    <section id="poenv-file">
+      <h2>The <code>.poenv</code> file</h2>
+      <p>Written by <code>init</code> at the repo root. It holds names only, never secrets.</p>
+      <div class="codewrap"><pre>app    = "my-app"
+env    = "local"        <span class="c"># the env the file is on</span>
+file   = ".env.local"   <span class="c"># the env file poenv writes</span>
+format = "next"         <span class="c"># dotenv | next | python</span></pre></div>
+      <p>It's gitignored by default. You can commit it instead: a teammate's <code>poenv init</code> in a fresh clone then adopts its settings, and poenv leaves a tracked <code>.poenv</code> alone.</p>
+    </section>
+
+    <section id="files">
+      <h2>Files &amp; settings</h2>
+      <div class="table"><table>
+        <tr><th>Path</th><th>Holds</th></tr>
+        <tr><td><code>~/.poenv/store.enc</code><br><span class="c">Windows: <code>%APPDATA%\poenv\store.enc</code></span></td><td>The vault, encrypted as a single blob</td></tr>
+        <tr><td><code>keys.json</code> (next to the vault)</td><td>The master key on this machine (owner-only)</td></tr>
+        <tr><td><code>repos.json</code> (next to the vault)</td><td>Paths of repos that use poenv, so changes reach them. No values; not in backups</td></tr>
+      </table></div>
+      <div class="table"><table>
+        <tr><th>Env var</th><th>Does</th></tr>
+        <tr><td><code>POENV_HOME</code></td><td>Folder for the vault and its files</td></tr>
+        <tr><td><code>POENV_DEBUG</code></td><td>Print stack traces on errors</td></tr>
+      </table></div>
+    </section>
+
+    <hr>
+
+    <section id="agents">
+      <h2>For AI agents</h2>
+      <p>Agents can do the daily work: check status, list key names, switch envs and run commands with secrets injected. poenv never prints a value to them, never accepts one as an argument, and keeps values out of <code>--json</code>.</p>
+      <div class="codewrap"><pre>poenv status --json              <span class="c"># which app/env this repo is on</span>
+poenv ls --json                  <span class="c"># envs and key names, never values</span>
+poenv use staging --json         <span class="c"># switch the env file</span>
+poenv run staging -- npm test    <span class="c"># run with an env injected</span>
+poenv doctor --json              <span class="c"># when something is off: follow each "fix"</span></pre></div>
+      <p>Agents are refused (exit 4) for <code>get</code>, <code>history</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>, <code>recover</code> and protected envs, and can't create the vault (exit 5), since that shows the recovery phrase.</p>
+      <figure class="demo"><img src="https://raw.githubusercontent.com/pogicodes/poenv/main/docs/demo/agents.gif" alt="In an agent shell: poenv ls works, poenv get and poenv use prod are refused, poenv use staging works" width="1000" height="625" loading="lazy"></figure>
+      <p><code>poenv init</code> adds a short section to <code>AGENTS.md</code> / <code>CLAUDE.md</code> telling agents these rules. To have an agent install poenv, point it at <a href="llms.txt">llms.txt</a> or the <a href="https://github.com/pogicodes/poenv/blob/main/INSTALL.md">agent install guide</a>, or say:</p>
+      <div class="cmd"><code>Install poenv (https://poenv.pogi.codes/llms.txt) and set up this repo.</code><button class="copy" type="button">Copy</button></div>
+      <h3>The <code>/poenv</code> skill</h3>
+      <p>Install the poenv <a href="https://github.com/pogicodes/poenv/blob/main/skills/poenv/SKILL.md">agent skill</a> once and every coding agent on your machine knows these rules in any repo: Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode and more.</p>
+      <div class="cmd"><code>npx skills add pogicodes/poenv</code><button class="copy" type="button">Copy</button></div>
+      <p>Then type <code>/poenv setup</code> or <code>/poenv use staging</code> (<code>$poenv</code> in Codex). Agents also reach for it on their own when you ask about env vars.</p>
+      <h3>How poenv tells people from agents</h3>
+      <p>A person has an interactive terminal on stdin and stdout <strong>and</strong> none of the markers coding agents set (<code>CLAUDECODE</code>, <code>CODEX_SANDBOX</code>, <code>CURSOR_AGENT</code>, <code>GEMINI_CLI</code>, <code>AI_AGENT</code>, …). A <code>CI</code> variable counts as a script too.</p>
+    </section>
+
+    <section id="security">
+      <h2>Security model</h2>
+      <ul>
+        <li>The vault's key sits next to it in <code>keys.json</code> (owner-only), so there's no password to type. Programs running as you, agents included, can read it.</li>
+        <li>Encryption protects the vault file and <code>poenv backup</code> files when copied on their own: they open only with your recovery phrase. A copy of the whole vault folder holds the key too, so encrypt your OS backups.</li>
+        <li>Values are never printed by agent-usable commands, never accepted as arguments (so they stay out of shell history), and never in <code>--json</code> output.</li>
+        <li>Once a value is written to an env file, anything that can read that file can read it, and a command run with secrets injected can print them. <code>poenv run</code> avoids writing files at all.</li>
+      </ul>
+      <div class="note"><p>These rules keep secrets out of <em>poenv's own output</em>. They are not a sandbox: an agent that can read your files can read a written <code>.env</code>.</p></div>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <p>Start with <code>poenv doctor</code>. It checks PATH, the vault, your saved phrase, gitignore, agent notes, dangling shared references and whether the env file is up to date, and names the fix for each. <code>poenv doctor --fix</code> applies the safe ones; it never runs sudo.</p>
+      <h3><code>poenv: command not found</code> after installing</h3>
+      <p>Open a new terminal so the PATH change applies, or use the full path the installer printed.</p>
+      <h3>My app still sees the old values</h3>
+      <p>Restart it: most dev servers read <code>.env</code> only at startup. Also check you don't set the same key below the poenv block, since your lines win.</p>
+      <h3>A value with <code>$</code> comes out wrong</h3>
+      <p>Your loader expands variables. Switch the format (<code>--format next</code> escapes <code>$</code>), or use <code>poenv run</code>. See <a href="#frameworks">Frameworks &amp; formats</a>.</p>
+      <h3>An agent keeps getting exit 5</h3>
+      <p>The vault doesn't exist yet, or this machine lost its key. Run the first <code>poenv init</code> (or <code>poenv recover</code>) in your own terminal. Never give the agent your recovery phrase.</p>
+    </section>
+
+    <footer>
+      <a href="https://github.com/pogicodes/poenv">GitHub</a> ·
+      <a href="https://github.com/pogicodes/poenv/releases">Releases</a> ·
+      <a href="https://github.com/pogicodes/poenv/blob/main/SPEC.md">Design spec</a> ·
+      <a href="https://github.com/pogicodes/poenv/issues">Issues</a> · MIT
+      <p style="margin:8px 0 0">Made by <a href="https://github.com/pogicodes">Carlo Gino Catapang</a></p>
+    </footer>
+  </main>
+</div>
+
+<script>
+  // Copy buttons: one-line commands have their own; multi-line blocks get one on hover.
+  // Comments (.c spans) are left out of what's copied.
+  for (const pre of document.querySelectorAll(".codewrap pre")) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "copy";
+    b.textContent = "Copy";
+    pre.parentElement.append(b);
+  }
+  for (const b of document.querySelectorAll(".copy")) {
+    b.addEventListener("click", async () => {
+      const src = (b.previousElementSibling ?? b.parentElement.querySelector("pre")).cloneNode(true);
+      for (const c of src.querySelectorAll(".c")) c.remove();
+      const text = src.textContent.split("\n").map((l) => l.trimEnd()).join("\n").trim();
+      try {
+        await navigator.clipboard.writeText(text);
+        b.textContent = "Copied";
+        setTimeout(() => (b.textContent = "Copy"), 1500);
+      } catch { /* clipboard blocked: the text is selectable */ }
+    });
+  }
+
+  // Heading anchors.
+  for (const h of document.querySelectorAll("main h2, main h3")) {
+    const id = h.closest("section")?.id;
+    if (h.tagName === "H3") {
+      h.id = id + "-" + h.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    }
+    const a = document.createElement("a");
+    a.className = "anchor";
+    a.href = "#" + (h.tagName === "H2" ? id : h.id);
+    a.textContent = "#";
+    a.setAttribute("aria-hidden", "true");
+    h.append(a);
+  }
+
+  // Sidebar: highlight the section in view.
+  const links = new Map([...document.querySelectorAll("aside a")].map((a) => [a.getAttribute("href").slice(1), a]));
+  const spy = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      for (const a of links.values()) a.classList.remove("active");
+      links.get(e.target.id)?.classList.add("active");
+    }
+  }, { rootMargin: "-72px 0px -70% 0px" });
+  for (const id of links.keys()) {
+    const s = document.getElementById(id);
+    if (s) spy.observe(s);
+  }
+
+  // Mobile menu.
+  const menu = document.getElementById("menu");
+  const setMenu = (open) => {
+    document.body.classList.toggle("menu-open", open);
+    menu.setAttribute("aria-expanded", String(open));
+    menu.textContent = open ? "Close" : "Menu";
+  };
+  menu.addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
+  for (const a of links.values()) a.addEventListener("click", () => setMenu(false));
+</script>
+</body>
+</html>

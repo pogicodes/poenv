@@ -1,0 +1,3 @@
+# Windows: link the C runtime statically, so poenv.exe runs without the Visual C++ redistributable.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
