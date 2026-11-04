@@ -469,7 +469,7 @@ poenv doctor --json              <span class="c"># when something is off: follow
       <div class="cmd"><code>Install poenv (https://poenv.pogi.codes/llms.txt) and set up this repo.</code><button class="copy" type="button">Copy</button></div>
       <h3>The <code>/poenv</code> skill</h3>
       <p>Install the poenv <a href="https://github.com/pogicodes/poenv-skill/blob/main/skills/poenv/SKILL.md">agent skill</a> once and every coding agent on your machine knows these rules in any repo: Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode and more.</p>
-      <div class="cmd"><code>npx skills add pogicodes/poenv-skill</code><button class="copy" type="button">Copy</button></div>
+      <div class="cmd"><code>npx skills@1.7.6 add pogicodes/poenv-skill</code><button class="copy" type="button">Copy</button></div>
       <p>Then type <code>/poenv setup</code> or <code>/poenv use staging</code> (<code>$poenv</code> in Codex). Agents also reach for it on their own when you ask about env vars.</p>
       <h3>How poenv tells people from agents</h3>
       <p>A person has an interactive terminal on stdin and stdout <strong>and</strong> none of the markers coding agents set (<code>CLAUDECODE</code>, <code>CODEX_SANDBOX</code>, <code>CURSOR_AGENT</code>, <code>GEMINI_CLI</code>, <code>AI_AGENT</code>, …). A <code>CI</code> variable counts as a script too.</p>
